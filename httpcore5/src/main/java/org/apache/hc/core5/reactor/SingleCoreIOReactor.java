@@ -105,41 +105,45 @@ class SingleCoreIOReactor extends AbstractSingleCoreIOReactor implements Connect
     @Override
     void doExecute() throws IOException {
         while (!Thread.currentThread().isInterrupted()) {
+            try {
+                final int readyCount = this.selector.select(this.selectTimeoutMillis);
 
-            final int readyCount = this.selector.select(this.selectTimeoutMillis);
-
-            if (getStatus().compareTo(IOReactorStatus.SHUTTING_DOWN) >= 0) {
-                if (this.shutdownInitiated.compareAndSet(false, true)) {
-                    initiateSessionShutdown();
+                if (getStatus().compareTo(IOReactorStatus.SHUTTING_DOWN) >= 0) {
+                    if (this.shutdownInitiated.compareAndSet(false, true)) {
+                        initiateSessionShutdown();
+                    }
+                    closePendingChannels();
                 }
-                closePendingChannels();
-            }
-            if (getStatus() == IOReactorStatus.SHUT_DOWN) {
-                break;
-            }
+                if (getStatus() == IOReactorStatus.SHUT_DOWN) {
+                    break;
+                }
 
-            // Process selected I/O events
-            if (readyCount > 0) {
-                processEvents(this.selector.selectedKeys());
-            }
+                // Process selected I/O events
+                if (readyCount > 0) {
+                    processEvents(this.selector.selectedKeys());
+                }
 
-            validateActiveChannels();
+                validateActiveChannels();
 
-            // Process closed sessions
-            processClosedSessions();
+                // Process closed sessions
+                processClosedSessions();
 
-            // If active process new channels
-            if (getStatus() == IOReactorStatus.ACTIVE) {
-                processPendingChannels();
-                processPendingConnectionRequests();
-            }
+                // If active process new channels
+                if (getStatus() == IOReactorStatus.ACTIVE) {
+                    processPendingChannels();
+                    processPendingConnectionRequests();
+                }
 
-            // Exit select loop if graceful shutdown has been completed
-            if (getStatus() == IOReactorStatus.SHUTTING_DOWN && this.selector.keys().isEmpty()) {
-                break;
-            }
-            if (getStatus() == IOReactorStatus.SHUT_DOWN) {
-                break;
+                // Exit select loop if graceful shutdown has been completed
+                if (getStatus() == IOReactorStatus.SHUTTING_DOWN && this.selector.keys().isEmpty()) {
+                    break;
+                }
+                if (getStatus() == IOReactorStatus.SHUT_DOWN) {
+                    break;
+                }
+            } catch (final Error err) {
+                // log and ignore
+                err.printStackTrace();
             }
         }
     }
